@@ -1,0 +1,16 @@
+up:
+  - node
+  - custom:
+      name: Install yarn & dependencies
+      meet: |
+        npm install -g yarn
+        yarn
+      unmeet: rm -rf node_modules
+
+commands:
+  website-deploy:
+    run: |
+      npx wrangler deploy
+  website-build:
+    run: |
+      node src/build.js
