@@ -7,6 +7,7 @@ export default {
 				headers: {
 					'Content-Type': 'text/plain',
 					'Content-Disposition': 'attachment; filename="getomni.sh"',
+					'Cache-Control': 'public, max-age=1800',
 				},
 			})
 		} else {
