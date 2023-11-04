@@ -1,0 +1,52 @@
+name: Continuous testing
+
+
+on:
+  # Runs on a pull request
+  pull_request:
+    branches:
+      - main
+
+
+# Allow one concurrent deployment
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+
+jobs:
+  tests:
+    name: Run tests
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        uses: cloudflare/wrangler-action@v3
+        with:
+          command: deploy --dry-run
+
+
+  auto-merge:
+    name: Auto-merge Dependabot pull-requests
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - tests
+
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+
+    permissions:
+      contents: none
+
+    steps:
+      - name: Automerge if Dependabot
+        uses: ahmadnassri/action-dependabot-auto-merge@v2
+        with:
+          target: minor
+          command: 'squash and merge'
+          github-token: ${{ secrets.AUTOMERGE_TOKEN }}
