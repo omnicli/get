@@ -42,10 +42,10 @@
     mime "^3.0.0"
     zod "^3.22.3"
 
-"@cloudflare/workers-types@^4.20241127.0":
-  version "4.20241127.0"
-  resolved "https://registry.yarnpkg.com/@cloudflare/workers-types/-/workers-types-4.20241127.0.tgz#e41d120a60ef1929ace1c5d94d2e9f436612352e"
-  integrity sha512-UqlvtqV8eI0CdPR7nxlbVlE52+lcjHvGdbYXEPwisy23+39RsFV7OOy0da0moJAhqnL2OhDmWTOaKdsVcPHiJQ==
+"@cloudflare/workers-types@^4.20241218.0":
+  version "4.20241218.0"
+  resolved "https://registry.yarnpkg.com/@cloudflare/workers-types/-/workers-types-4.20241218.0.tgz#05ba65449306db07082d45ef9ad16a984cc81e5e"
+  integrity sha512-Y0brjmJHcAZBXOPI7lU5hbiXglQWniA1kQjot2ata+HFimyjPPcz+4QWBRrmWcMPo0OadR2Vmac7WStDLpvz0w==
 
 "@cspotcode/source-map-support@0.8.1":
   version "0.8.1"
