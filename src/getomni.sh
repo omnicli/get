@@ -378,10 +378,11 @@ keyless_sig_verify() {
 		}
 	fi
 
+	# Use a regex since the account was renamed from XaF to xaf
+	CERTIFICATE_ID_PATH="\\.github/workflows/build-and-test-target\\.yaml@refs/tags/${TAG}"
+	CERTIFICATE_ID_REG="^https://github.com/[xX]a[fF]/omni/${CERTIFICATE_ID_PATH}\$"
+
 	if [ -n "${has_cosign}" ]; then
-		# Use a regex since the account was renamed from XaF to xaf
-		CERTIFICATE_ID_PATH="\\.github/workflows/build-and-test-target\\.yaml@refs/tags/${TAG}"
-		CERTIFICATE_ID_REG="^https://github.com/[xX]a[fF]/omni/${CERTIFICATE_ID_PATH}\$"
 		cosign verify-blob \
 			--signature "${tmpdir}/${SIGNATURE}" \
 			--certificate "${tmpdir}/${CERTIFICATE}" \
@@ -400,8 +401,14 @@ keyless_sig_verify() {
 
 	if [ -n "${has_openssl}" ]; then
 		# Decode the base64 certificate first
-		base64 -d "${tmpdir}/${CERTIFICATE}" > "${tmpdir}/decoded.pem" || {
+		base64_decode_file "${tmpdir}/${CERTIFICATE}" "${tmpdir}/decoded.pem" || {
 			log_err "(openssl) failed to decode certificate"
+			return 1
+		}
+
+		# Extract the claims from the certificate
+		check_oidc_claims "${tmpdir}/decoded.pem" "${CERTIFICATE_ID_REG}" || {
+			log_err "(openssl) failed to verify certificate claims"
 			return 1
 		}
 
@@ -415,9 +422,9 @@ keyless_sig_verify() {
 		}
 
 		# Decode the base64 signature if needed
-		base64 -d "${tmpdir}/${SIGNATURE}" > "${tmpdir}/decoded.sig" || {
-			log_err "(openssl) failed to decode signature"
-			return 1
+		base64_decode_file "${tmpdir}/${SIGNATURE}" "${tmpdir}/decoded.sig" || {
+			# If the signature is not base64 encoded, it is a raw signature
+			cp "${tmpdir}/${SIGNATURE}" "${tmpdir}/decoded.sig"
 		}
 
 		# Verify using the extracted public key
@@ -436,6 +443,58 @@ keyless_sig_verify() {
 	fi
 
 	log_warn "cosign and openssl not found; skipping signature verification"
+	return 0
+}
+
+base64_decode_file() {
+	source="${1:?}"
+	target="${2:?}"
+
+	# The base64 binary can be either GNU or BSD, which takes different
+	# arguments for decoding.
+	if base64 --version 2>&1 | grep -q 'BSD'; then
+		base64 -d -i "${source}" -o "${target}"
+	else
+		base64 -d "${source}" > "${target}"
+	fi
+}
+
+check_oidc_claims() {
+	certificate="${1:?}"
+	identity_regex="${2:?}"
+
+	# Extract the issuer claim from the certificate
+	issuer_claim=$(openssl x509 -text -noout -in "${certificate}" | \
+		grep -E -A1 '^\s+1\.3\.6\.1\.4\.1\.57264\.1\.1:' | \
+		tail -n1 | \
+		sed 's/^\s*[^a-zA-Z]*//')
+	if [ -z "${issuer_claim}" ]; then
+		log_err "certificate does not contain an issuer claim"
+		return 1
+	fi
+
+	# Check if the issuer claim matches the expected value
+	if [ "${issuer_claim}" != "https://token.actions.githubusercontent.com" ]; then
+		log_err "certificate issuer claim (${issuer_claim}) does not match expected value"
+		return 1
+	fi
+
+	# Extract the identity claim from the certificate
+	identity_claim=$(openssl x509 -text -noout -in "${certificate}" | \
+		grep -E -A1 '^\s+1\.3\.6\.1\.4\.1\.57264\.1\.9:' | \
+		tail -n1 | \
+		sed 's/^\s*[^a-zA-Z]*//')
+	if [ -z "${identity_claim}" ]; then
+		log_err "certificate does not contain an identity claim"
+		return 1
+	fi
+
+	# Check if the identity claim matches the expected value
+	if ! echo "${identity_claim}" | grep -q -E "${identity_regex}"; then
+		log_err "certificate identity claim (${identity_claim}) does not match expected value"
+		return 1
+	fi
+
 	return 0
 }
 
