@@ -14,6 +14,10 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    environment:
+      name: production
+      url: https://get.omnicli.dev
+
     steps:
       - name: Checkout commit
         uses: actions/checkout@v4
