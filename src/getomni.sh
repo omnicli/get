@@ -37,8 +37,12 @@ fi
 
 TAGARG=latest
 LOG_LEVEL=2
+INSTALL_WITH=
 
-GITHUB_DOWNLOAD="https://github.com/xaf/omni/releases/download"
+GITHUB_NAME=xaf/omni
+GITHUB_REPO="https://github.com/${GITHUB_NAME}"
+GITHUB_RELEASES="${GITHUB_REPO}/releases"
+GITHUB_DOWNLOAD="${GITHUB_RELEASES}/download"
 
 tmpdir="$(mktemp -d -t get-omni.XXXXXXXXXX)"
 trap 'rm -rf -- "${tmpdir}"' EXIT
@@ -49,9 +53,12 @@ usage() {
 	cat <<EOF
 ${this}: download omni and optionally run omni
 
-Usage: ${this} [-b bindir] [-d] [omni-args]
+Usage: ${this} [-b bindir] [-dBCD] [omni-args]
   -b sets the installation directory, default is ${BINDIR}.
   -d enables debug logging.
+  -B install omni via brew.
+  -C install omni via cargo.
+  -D install omni via download.
 If omni-args are given, after install omni is executed with omni-args.
 EOF
 	exit 2
@@ -66,9 +73,9 @@ main() {
 
 	if install_via_brew; then
 		BINDIR="$(brew --prefix)/bin"
-	elif install_via_download; then
+	elif [ "${INSTALL_WITH:-download}" = "download" ] && install_via_download; then
 		: # Nothing to do
-	elif install_via_cargo; then
+	elif [ "${INSTALL_WITH:-cargo}" = "cargo" ] && install_via_cargo; then
 		: # Nothing to do
 	else
 		log_crit "unable to install omni"
@@ -81,16 +88,25 @@ main() {
 }
 
 install_via_brew() {
+	if [ "${INSTALL_WITH:-brew}" != "brew" ]; then
+		return 1
+	fi
+
 	if is_command brew; then
 		log_info "brew is installed; installing omni via brew"
 		brew tap xaf/omni
 		brew install omni
 		return 0
 	fi
+
 	return 1
 }
 
 install_via_download() {
+	if [ "${INSTALL_WITH:-download}" != "download" ]; then
+		return 1
+	fi
+
 	OS="$(get_os)"
 	ARCH="$(get_arch)"
 	if ! check_os_arch "${OS}/${ARCH}"; then
@@ -122,6 +138,9 @@ install_via_download() {
 	# verify checksums
 	hash_sha256_verify "${tmpdir}/${TARBALL}" "${tmpdir}/${CHECKSUMS}"
 
+	# verify signature
+	keyless_sig_verify "${TARBALL}" "${NAME}" "${TAG}" "${tmpdir}" || exit 1
+
 	(cd -- "${tmpdir}" && untar "${TARBALL}")
 
 	# install binary
@@ -135,15 +154,22 @@ install_via_download() {
 }
 
 install_via_cargo() {
+	if [ "${INSTALL_WITH:-cargo}" != "cargo" ]; then
+		return 1
+	fi
+
 	cargo install omnicli --root "${BINDIR}"
 	return $?
 }
 
 parse_args() {
-	while getopts "b:dh?V:" arg; do
+	while getopts "b:dh?V:BCD" arg; do
 		case "${arg}" in
 		b) BINDIR="${OPTARG}" ;;
 		d) LOG_LEVEL=3 ;;
+		B) INSTALL_WITH=brew ;;
+		C) INSTALL_WITH=cargo ;;
+		D) INSTALL_WITH=download ;;
 		h | \?) usage "${0}" ;;
 		*) return 1 ;;
 		esac
@@ -221,7 +247,7 @@ get_libc() {
 real_tag() {
 	tag="${1}"
 	log_debug "checking GitHub for tag ${tag}"
-	release_url="https://github.com/xaf/omni/releases/${tag}"
+	release_url="${GITHUB_RELEASES}/${tag}"
 	json="$(http_get "${release_url}" "Accept: application/json")"
 	if [ -z "${json}" ]; then
 		log_err "real_tag error retrieving GitHub release ${tag}"
@@ -323,6 +349,94 @@ hash_sha256_verify() {
 		log_err "hash_sha256_verify checksum for ${target} did not verify ${want} vs ${got}"
 		return 1
 	fi
+
+	log_info "checksum verified"
+}
+
+keyless_sig_verify() {
+	TARBALL="${1}"
+	NAME="${2}"
+	TAG="${3}"
+	tmpdir="${4}"
+
+	SIGNATURE="${NAME}-keyless.sig"
+	SIGNATURE_URL="${GITHUB_DOWNLOAD}/${TAG}/${SIGNATURE}"
+	CERTIFICATE="${NAME}-keyless.pem"
+	CERTIFICATE_URL="${GITHUB_DOWNLOAD}/${TAG}/${CERTIFICATE}"
+
+	has_cosign=$(is_command cosign && echo cosign)
+	has_openssl=$(is_command openssl && echo openssl)
+
+	if [ -n "${has_cosign}" ] || [ -n "${has_openssl}" ]; then
+		http_download "${tmpdir}/${CERTIFICATE}" "${CERTIFICATE_URL}" || {
+			log_warn "unable to download certificate; skipping verification"
+			return 0
+		}
+		http_download "${tmpdir}/${SIGNATURE}" "${SIGNATURE_URL}" || {
+			log_err "unable to download signature"
+			return 1
+		}
+	fi
+
+	if [ -n "${has_cosign}" ]; then
+		# Use a regex since the account was renamed from XaF to xaf
+		CERTIFICATE_ID_PATH="\\.github/workflows/build-and-test-target\\.yaml@refs/tags/${TAG}"
+		CERTIFICATE_ID_REG="^https://github.com/[xX]a[fF]/omni/${CERTIFICATE_ID_PATH}\$"
+		cosign verify-blob \
+			--signature "${tmpdir}/${SIGNATURE}" \
+			--certificate "${tmpdir}/${CERTIFICATE}" \
+			--certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+			--certificate-identity-regexp "${CERTIFICATE_ID_REG}" \
+			--certificate-github-workflow-ref "refs/tags/${TAG}" \
+			"${tmpdir}/${TARBALL}" \
+		&& {
+			log_info "(cosign) signature verified"
+			return 0
+		}
+
+		log_err "(cosign) signature verification failed"
+		return 1
+	fi
+
+	if [ -n "${has_openssl}" ]; then
+		# Decode the base64 certificate first
+		base64 -d "${tmpdir}/${CERTIFICATE}" > "${tmpdir}/decoded.pem" || {
+			log_err "(openssl) failed to decode certificate"
+			return 1
+		}
+
+		# Extract public key from certificate first
+		openssl x509 \
+			-in "${tmpdir}/decoded.pem" \
+			-pubkey -noout >"${tmpdir}/pubkey.pem" \
+		|| {
+			log_err "(openssl) failed to extract public key from certificate"
+			return 1
+		}
+
+		# Decode the base64 signature if needed
+		base64 -d "${tmpdir}/${SIGNATURE}" > "${tmpdir}/decoded.sig" || {
+			log_err "(openssl) failed to decode signature"
+			return 1
+		}
+
+		# Verify using the extracted public key
+		openssl dgst \
+			-sha256 \
+			-verify "${tmpdir}/pubkey.pem" \
+			-signature "${tmpdir}/decoded.sig" \
+			"${tmpdir}/${TARBALL}" \
+		&& {
+			log_info "(openssl) signature verified"
+			return 0
+		}
+
+		log_err "(openssl) signature verification failed"
+		return 1
+	fi
+
+	log_warn "cosign and openssl not found; skipping signature verification"
+	return 0
 }
 
 untar() {
