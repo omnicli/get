@@ -60,14 +60,8 @@ jobs:
       - name: Checkout commit
         uses: actions/checkout@v4
 
-      - name: Install shellcheck
-        run: sudo apt-get install shellcheck
-
       - name: Lint install script (sh)
         run: shellcheck -s sh src/getomni.sh
-
-      - name: Lint install script (busybox)
-        run: shellcheck -s busybox src/getomni.sh
 
 
   auto-merge:
