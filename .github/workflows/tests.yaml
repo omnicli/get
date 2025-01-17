@@ -30,6 +30,28 @@ jobs:
           command: deploy --dry-run
 
 
+  test-install-script:
+    name: Test install script (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Run install script (brew)
+        if: matrix.os == 'macos-latest'
+        run: ./src/getomni.sh -B
+
+      - name: Run install script (download)
+        run: ./src/getomni.sh -D
+
+
   auto-merge:
     name: Auto-merge Dependabot pull-requests
 
@@ -37,6 +59,7 @@ jobs:
 
     needs:
       - tests
+      - test-install-script
 
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
 
