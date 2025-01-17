@@ -6,6 +6,8 @@ up:
         npm install -g yarn
         yarn
       unmeet: rm -rf node_modules
+  - github-release:
+      koalaman/shellcheck: v0.10.0
 
 commands:
   website-deploy:

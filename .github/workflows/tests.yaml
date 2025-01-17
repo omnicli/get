@@ -52,6 +52,24 @@ jobs:
         run: ./src/getomni.sh -D
 
 
+  lint-install-script:
+    name: Lint install script
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install shellcheck
+
+      - name: Lint install script (sh)
+        run: shellcheck -s sh src/getomni.sh
+
+      - name: Lint install script (busybox)
+        run: shellcheck -s busybox src/getomni.sh
+
+
   auto-merge:
     name: Auto-merge Dependabot pull-requests
 
@@ -60,6 +78,7 @@ jobs:
     needs:
       - tests
       - test-install-script
+      - lint-install-script
 
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
 
