@@ -9,7 +9,7 @@
     "start": "wrangler dev"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250109.0",
+    "@cloudflare/workers-types": "^4.20250124.3",
     "typescript": "^5.7.3",
     "wrangler": "^3.103.2"
   }
