@@ -22,7 +22,14 @@ jobs:
       - name: Checkout commit
         uses: actions/checkout@v4
 
+      - name: Extract wrangler version
+        id: wrangler-version
+        run: |
+          WRANGLER_VERSION=$(jq -r '.packages["node_modules/wrangler"].version' package-lock.json)
+          echo "wrangler_version=$WRANGLER_VERSION" | tee -a $GITHUB_OUTPUT
+
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: ${{ steps.wrangler-version.outputs.wrangler_version }}
