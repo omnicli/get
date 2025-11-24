@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Run tests
         uses: cloudflare/wrangler-action@v3
@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Run install script (brew)
         if: matrix.os == 'macos-latest'
@@ -58,7 +58,7 @@ jobs:
 
     steps:
       - name: Checkout commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Lint install script (sh)
         run: shellcheck -s sh src/getomni.sh
